@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<title>MDL file upload field</title>
+	<link rel='stylesheet prefetch'
+		href='https://storage.googleapis.com/code.getmdl.io/1.0.0/material.indigo-pink.min.css'>
+	<link rel='stylesheet prefetch' href='https://fonts.googleapis.com/icon?family=Material+Icons'>
+	<link rel='stylesheet prefetch'
+		href='https://storage.googleapis.com/code.getmdl.io/1.0.0/material.indigo-pink.min.css'>
+	<link rel='stylesheet prefetch' href='https://fonts.googleapis.com/icon?family=Material+Icons'>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+	<form>
+		<div class="mdl-textfield mdl-js-textfield mdl-textfield--file">
+			<input class="mdl-textfield__input" placeholder="File" type="text" id="uploadFile" readonly />
+			<div class="mdl-button mdl-button--primary mdl-button--icon mdl-button--file">
+				<i class="material-icons">attach_file</i><input type="file" id="uploadBtn">
+			</div>
+		</div>
+		<div class="mdl-button">
+			<button type="button"
+				class="mdl-button mdl-js-button mdl-button--fab mdl-button--mini-fab mdl-button--colored"
+				onclick='handleFileSelect();'><i class="material-icons">add</i></button>
+		</div>
+		<div class="mdl-button">
+			<button type="button" class="my-button" onclick="window.open('modelTypeQuestion.xlsx')">Tải file
+				mẫu</button>
+		</div>
+	</form>
+</body>
+
+</html>
+<script src='js/material.min.js'></script>
+<script src="js/jquery.min.js"></script>
+<script src="js/xlsx.core.min.js"></script>
+<script src="js/index.js"></script>
+<script type="text/javascript" src="js/Blob.js"></script>
+<script type="text/javascript" src="js/FileSaver.js"></script>
+
+<script>
+	function handleFileSelect() {
+		//Get the files from Upload control
+		var formulaType = $("input:radio[name ='formula']:checked").val();
+		var input = document.getElementById('uploadBtn');
+		f = input.files[0];
+		//Loop through files
+		var reader = new FileReader();
+		var name = f.name;
+		reader.onload = function (e) {
+			var data = e.target.result;
+
+			var result;
+			var workbook = XLSX.read(data, { type: 'binary' });
+			var modelTypeList = XLSX.utils.sheet_to_json(workbook.Sheets['modelType']);
+			var modelTypeQuesList = XLSX.utils.sheet_to_json(workbook.Sheets['modelTypeQues']);
+			var modelTypeFormulaList = [];
+			var modelTypeFormulaLabel = ['Model Type Code', 'step1', 'step2', 'step3', 'step4', 'step5', 'stepFinal', 'stepAlter1', 'stepAlter2', 'stepAlter3', 'stepAlter4', 'stepAlter5', 'stepAlterFinal'];
+			modelTypeFormulaList.push(modelTypeFormulaLabel)
+			modelTypeList.forEach(function (modelType) {
+				var modelTypeFormula = [];
+				modelTypeFormula.push(modelType.code);
+				var questionList = [];
+				modelTypeQuesList.forEach(function (modelTypeQues) {
+					if (modelType.code == modelTypeQues.modelType) {
+						var questionCodeTemp = modelTypeQues.questionCode
+						if (questionCodeTemp.indexOf('.') > -1) {
+							questionCodeTemp = questionCodeTemp.replace(/\./g, '_')
+						}
+						questionList.push(questionCodeTemp);
+					}
+				});
+				renderFormula(modelTypeFormula, modelType, questionList);
+				modelTypeFormulaList.push(modelTypeFormula)
+			});
+			console.log(modelTypeFormulaList)
+			var wb = new Workbook()
+			var ws = sheet_from_array_of_arrays(modelTypeFormulaList);
+			var ws_name = "formula"
+			wb.SheetNames.push(ws_name);
+			wb.Sheets[ws_name] = ws;
+			var wbout = XLSX.write(wb, { bookType: 'xlsx', bookSST: true, type: 'binary' });
+			saveAs(new Blob([s2ab(wbout)], { type: "application/octet-stream" }), "modelTypeFormula.xlsx")
+		};
+		reader.readAsArrayBuffer(f);
+
+	}
+	function renderFormula(modelTypeFormula, modelType, results) {
+		if (modelType.formula1 != null) {
+			if (modelType.formula1 == "max") {
+				var max = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						max += `${code}_score1!=null?${code}_score1:0`;
+					} else {
+						max += `,${code}_score1!=null?${code}_score1:0`;
+					}
+				}
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`[${max}].max()`);
+
+			}
+			else if (modelType.formula1 == "yesNo") {
+				var yesNo = ""
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						yesNo += `(${code}_score1!=null?${code}_score1:1)`;
+					} else {
+						yesNo += `*(${code}_score1!=null?${code}_score1:1)`;
+					}
+				}
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`${yesNo}`);
+			}
+			else if (modelType.formula1 == "complex") {
+				var tw = "";
+				var si = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						tw += `((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					} else {
+						tw += `+((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					}
+
+				}
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						si += `((${code}_std!=null&&${code}_std!=0&&${code}_score1!=null&&${code}_score1!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)/${code}_std):0)`;
+					} else {
+						si += `+((${code}_std!=null&&${code}_std!=0&&${code}_score1!=null&&${code}_score1!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)/${code}_std):0)`;
+					}
+				}
+				modelTypeFormula.push(`${si}`);
+				modelTypeFormula.push(`((${tw})==0)?0:(s1/(${tw}))`);
+				modelTypeFormula.push(`a1+b1*s2`);
+				modelTypeFormula.push(`1/(1+Math.exp(-s3))`);
+				modelTypeFormula.push(`c1*s4/(c1*s4+d1*(1-s4))`);
+			}
+			else if (modelType.formula1 == "normalize") {
+				var tw = "";
+				var si = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						tw += `((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					} else {
+						tw += `+((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					}
+
+				}
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						si += `((${code}_std!=null&&${code}_std!=0&&${code}_score1!=null&&${code}_score1!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)/${code}_std):0)`;
+					} else {
+						si += `+((${code}_std!=null&&${code}_std!=0&&${code}_score1!=null&&${code}_score1!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)/${code}_std):0)`;
+					}
+				}
+				modelTypeFormula.push(`${si}`);
+				modelTypeFormula.push(`((${tw})==0)?0:(s1/(${tw}))`);
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+			}
+			else if (modelType.formula1 == "complexAddH") {
+				var tw = "";
+				var si = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						tw += `((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					} else {
+						tw += `+((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					}
+
+				}
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						si += `((${code}_std!=null&&${code}_std!=0&&${code}_score1!=null&&${code}_score1!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)/${code}_std):0)`;
+					} else {
+						si += `+((${code}_std!=null&&${code}_std!=0&&${code}_score1!=null&&${code}_score1!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)/${code}_std):0)`;
+					}
+				}
+				modelTypeFormula.push(`${si}`);
+				modelTypeFormula.push(`((${tw})==0)?0:(h+s1/(${tw}))`);
+				modelTypeFormula.push(`a1+b1*s2`);
+				modelTypeFormula.push(`1/(1+Math.exp(-s3))`);
+				modelTypeFormula.push(`c1*s4/(c1*s4+d1*(1-s4))`);
+			}
+			else if (modelType.formula1 == "complexEY") {
+				var tw = "";
+				var si = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						tw += `((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					} else {
+						tw += `+((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					}
+
+				}
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						si += `((${code}_score1!=null && ${code}_weight!=null && ${code}_weight!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null)?${code}_weight:0)/${code}_std):0)`;
+					} else {
+						si += `+((${code}_score1!=null && ${code}_weight!=null && ${code}_weight!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null)?${code}_weight:0)/${code}_std):0)`;
+					}
+				}
+				modelTypeFormula.push(`${si}`);
+				modelTypeFormula.push(`((${tw})==0)?0:(s1+e1)`);
+				modelTypeFormula.push(`a1+b1*s2`);
+				modelTypeFormula.push(`1/(1+Math.exp(-s3))`);
+				modelTypeFormula.push(`c1*s4/(c1*s4+d1*(1-s4))`);
+			}
+			else if (modelType.formula1 == "complexPower3") {
+				var tw = "";
+				var si = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						tw += `((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					} else {
+						tw += `+((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)`;
+					}
+
+				}
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						si += `((${code}_std!=null&&${code}_std!=0&&${code}_score1!=null&&${code}_score1!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)/${code}_std):0)`;
+					} else {
+						si += `+((${code}_std!=null&&${code}_std!=0&&${code}_score1!=null&&${code}_score1!=0)?((${code}_score1-${code}_mean)*((${code}_score1!=null&&${code}_score1!=0)?${code}_weight:0)/${code}_std):0)`;
+					}
+				}
+				modelTypeFormula.push(`${si}`);
+				modelTypeFormula.push(`((${tw})==0)?0:(s1/(${tw}))`);
+				modelTypeFormula.push(`a1+(b1*s2)+(b2*(Math.pow(s2,2)))+(b3*(Math.pow(s2,3)))`);
+				modelTypeFormula.push(`1/(1+Math.exp(-s3))`);
+				modelTypeFormula.push(`c1*s4/(c1*s4+d1*(1-s4))`);
+			}
+			else if (modelType.formula1 == "calibratePower3") {
+				var tw = "";
+				var si = "";
+				var multiply = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						multiply += `((${code}_score1!=null&&${code}_score1!=0)?${code}_score1:1)`;
+					} else {
+						multiply += `+((${code}_score1!=null&&${code}_score1!=0)?${code}_score1:1)`;
+					}
+				}
+				modelTypeFormula.push(`(e1+(${multiply}))`);
+				modelTypeFormula.push(`a1+(b1*s1)+(b2*(Math.pow(s1,2)))+(b3*(Math.pow(s1,3)))`);
+				modelTypeFormula.push(`1/(1+Math.exp(-s2))`);
+				modelTypeFormula.push(`c1*s3/(c1*s3+d1*(1-s3))`);
+				modelTypeFormula.push('');
+			}
+			else if (modelType.formula1 == "calibrate") {
+				var tw = "";
+				var si = "";
+				var multiply = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						multiply += `((${code}_score1!=null&&${code}_score1!=0)?${code}_score1:1)`;
+					} else {
+						multiply += `+((${code}_score1!=null&&${code}_score1!=0)?${code}_score1:1)`;
+					}
+				}
+				modelTypeFormula.push(`(e1+(${multiply}))`);
+				modelTypeFormula.push(`a1+(b1*s1)`);
+				modelTypeFormula.push(`1/(1+Math.exp(-s2))`);
+				modelTypeFormula.push(`c1*s3/(c1*s3+d1*(1-s3))`);
+				modelTypeFormula.push('');
+			}
+			else if (modelType.formula1 == "sumProduct") {
+				var sum = "";
+				var tw = "";
+				if (results.length === 1) {
+					for (var i = 0; i < results.length; i++) {
+						var code = results[i];
+						if (i == 0) {
+							tw += `((((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0)))`;
+						} else if (i < (results.length - 1)) {
+							tw += `+((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0)`;
+						} else {
+							tw += `+((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0))*100000000000000000000/100000000000000000000)`;
+						}
+					}
+					for (var i = 0; i < results.length; i++) {
+						var code = results[i];
+						if (i == 0) {
+							sum += `((((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score1:0)))`;
+						} else if (i < (results.length - 1)) {
+							sum += `+((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score1:0)`;
+						} else {
+							sum += `+((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score1:0))*100000000000000000000/100000000000000000000)`;
+						}
+					}
+				} else {
+					for (var i = 0; i < results.length; i++) {
+						var code = results[i];
+						if (i == 0) {
+							tw += `((((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0)`;
+						} else if (i < (results.length - 1)) {
+							tw += `+((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0)`;
+						} else {
+							tw += `+((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0))*100000000000000000000/100000000000000000000)`;
+						}
+					}
+					for (var i = 0; i < results.length; i++) {
+						var code = results[i];
+						if (i == 0) {
+							sum += `((((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score1:0)`;
+						} else if (i < (results.length - 1)) {
+							sum += `+((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score1:0)`;
+						} else {
+							sum += `+((${code}_score1!=null&&${code}_score1!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score1:0))*100000000000000000000/100000000000000000000)`;
+						}
+					}
+				}
+
+
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`${sum}/${tw}`);
+			}
+			else if (modelType.formula1 == "multiply") {
+				var multiply = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						multiply += `((${code}_score1!=null&&${code}_score1!=0)?${code}_score1:1)`;
+					} else {
+						multiply += `*((${code}_score1!=null&&${code}_score1!=0)?${code}_score1:1)`;
+					}
+				}
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`${multiply}`);
+			}
+			else if (modelType.formula1 == "probability") {
+				var probability = `(a1!=null?a1:0)`;
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					probability += `+((${code}_weight!=null?${code}_weight:0)*(${code}_score1!=null?${code}_score1:0))`;
+				}
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`Math.round((100*Math.exp(${probability})/(1+Math.exp(${probability})))*1e2)/1e2`);
+			}
+			modelTypeFormula.push('s5');
+		}
+		if (modelType.formula2 != null) {
+			if (modelType.formula2 == "max") {
+				var max = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						max += `${code}_score2!=null?${code}_score2:0`;
+					} else {
+						max += `,${code}_score2!=null?${code}_score2:0`;
+					}
+				}
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`[${max}].max()`);
+
+			}
+			else if (modelType.formula2 == "yesNo") {
+				var yesNo = ""
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						yesNo += `(${code}_score2!=null?${code}_score2:1)`;
+					} else {
+						yesNo += `*(${code}_score2!=null?${code}_score2:1)`;
+					}
+				}
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`${yesNo}`);
+			}
+			else if (modelType.formula2 == "complex") {
+				var tw = "";
+				var si = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						tw += `((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)`;
+					} else {
+						tw += `+((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)`;
+					}
+
+				}
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						si += `((${code}_std!=null&&${code}_std!=0&&${code}_score2!=null&&${code}_score2!=0)?((${code}_score2-${code}_mean)*((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)/${code}_std):0)`;
+					} else {
+						si += `+((${code}_std!=null&&${code}_std!=0&&${code}_score2!=null&&${code}_score2!=0)?((${code}_score2-${code}_mean)*((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)/${code}_std):0)`;
+					}
+				}
+				modelTypeFormula.push(`${si}`);
+				modelTypeFormula.push(`z1/${tw}`);
+				modelTypeFormula.push(`a1+b1*z2`);
+				modelTypeFormula.push(`1/(1+Math.exp(-z3))`);
+				modelTypeFormula.push(`c1*z4/(c1*z4+d1*(1-z4))`);
+			}
+			else if (modelType.formula2 == "normalize") {
+				var tw = "";
+				var si = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						tw += `((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)`;
+					} else {
+						tw += `+((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)`;
+					}
+
+				}
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						si += `((${code}_std!=null&&${code}_std!=0&&${code}_score2!=null&&${code}_score2!=0)?((${code}_score2-${code}_mean)*((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)/${code}_std):0)`;
+					} else {
+						si += `+((${code}_std!=null&&${code}_std!=0&&${code}_score2!=null&&${code}_score2!=0)?((${code}_score2-${code}_mean)*((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)/${code}_std):0)`;
+					}
+				}
+				modelTypeFormula.push(`${si}`);
+				modelTypeFormula.push(`z1/${tw}`);
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+			}
+			else if (modelType.formula2 == "complexAddH") {
+				var tw = "";
+				var si = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						tw += `((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)`;
+					} else {
+						tw += `+((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)`;
+					}
+
+				}
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						si += `((${code}_std!=null&&${code}_std!=0&&${code}_score2!=null&&${code}_score2!=0)?((${code}_score2-${code}_mean)*((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)/${code}_std):0)`;
+					} else {
+						si += `+((${code}_std!=null&&${code}_std!=0&&${code}_score2!=null&&${code}_score2!=0)?((${code}_score2-${code}_mean)*((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)/${code}_std):0)`;
+					}
+				}
+				modelTypeFormula.push(`${si}`);
+				modelTypeFormula.push(`((h+z1)/${tw})`);
+				modelTypeFormula.push(`a1+b1*z2`);
+				modelTypeFormula.push(`1/(1+Math.exp(-z3))`);
+				modelTypeFormula.push(`c1*z4/(c1*z4+d1*(1-z4))`);
+			}
+			else if (modelType.formula2 == "complexPower3") {
+				var tw = "";
+				var si = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						tw += `((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)`;
+					} else {
+						tw += `+((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)`;
+					}
+
+				}
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						si += `((${code}_std!=null&&${code}_std!=0&&${code}_score2!=null&&${code}_score2!=0)?((${code}_score2-${code}_mean)*((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)/${code}_std):0)`;
+					} else {
+						si += `+((${code}_std!=null&&${code}_std!=0&&${code}_score2!=null&&${code}_score2!=0)?((${code}_score2-${code}_mean)*((${code}_score2!=null&&${code}_score2!=0)?${code}_weight:0)/${code}_std):0)`;
+					}
+				}
+				modelTypeFormula.push(`${si}`);
+				modelTypeFormula.push(`z1/${tw}`);
+				modelTypeFormula.push(`a1+(b1*z2)+(b2*(Math.pow(z2,2)))+(b3*(Math.pow(z2,3)))`);
+				modelTypeFormula.push(`1/(1+Math.exp(-z3))`);
+				modelTypeFormula.push(`c1*z4/(c1*z4+d1*(1-z4))`);
+			}
+			else if (modelType.formula2 == "calibratePower3") {
+				var tw = "";
+				var si = "";
+				var multiply = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						multiply += `((${code}_score2!=null&&${code}_score2!=0)?${code}_score2:1)`;
+					} else {
+						multiply += `+((${code}_score2!=null&&${code}_score2!=0)?${code}_score2:1)`;
+					}
+				}
+				modelTypeFormula.push(`(e1+(${multiply}))`);
+				modelTypeFormula.push(`a1+(b1*z1)+(b2*(Math.pow(z1,2)))+(b3*(Math.pow(z1,3)))`);
+				modelTypeFormula.push(`1/(1+Math.exp(-z2))`);
+				modelTypeFormula.push(`c1*z3/(c1*z3+d1*(1-z3))`);
+				modelTypeFormula.push('');
+			}
+			else if (modelType.formula2 == "calibrate") {
+				var tw = "";
+				var si = "";
+				var multiply = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						multiply += `((${code}_score2!=null&&${code}_score2!=0)?${code}_score2:1)`;
+					} else {
+						multiply += `+((${code}_score2!=null&&${code}_score2!=0)?${code}_score2:1)`;
+					}
+				}
+				modelTypeFormula.push(`(e1+(${multiply}))`);
+				modelTypeFormula.push(`a1+(b1*z1)`);
+				modelTypeFormula.push(`1/(1+Math.exp(-z2))`);
+				modelTypeFormula.push(`c1*z3/(c1*z3+d1*(1-z3))`);
+				modelTypeFormula.push('');
+			}
+			else if (modelType.formula2 == "sumProduct") {
+				var sum = "";
+				var tw = "";
+				if (results.length === 1) {
+
+					for (var i = 0; i < results.length; i++) {
+						var code = results[i];
+						if (i == 0) {
+							tw += `((((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0)))`;
+						} else if (i < (results.length - 1)) {
+							tw += `+((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0)`;
+						} else {
+							tw += `+((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0))*100000000000000000000/100000000000000000000)`;
+						}
+					}
+					for (var i = 0; i < results.length; i++) {
+						var code = results[i];
+						if (i == 0) {
+							sum += `((((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score2:0)))`;
+						} else if (i < (results.length - 1)) {
+							sum += `+((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score2:0)`;
+						} else {
+							sum += `+((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score2:0))*100000000000000000000/100000000000000000000)`;
+						}
+					}
+				} else {
+
+					for (var i = 0; i < results.length; i++) {
+						var code = results[i];
+						if (i == 0) {
+							tw += `((((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0)`;
+						} else if (i < (results.length - 1)) {
+							tw += `+((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0)`;
+						} else {
+							tw += `+((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight:0))*100000000000000000000/100000000000000000000)`;
+						}
+					}
+					for (var i = 0; i < results.length; i++) {
+						var code = results[i];
+						if (i == 0) {
+							sum += `((((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score2:0)`;
+						} else if (i < (results.length - 1)) {
+							sum += `+((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score2:0)`;
+						} else {
+							sum += `+((${code}_score2!=null&&${code}_score2!=0&&${code}_weight!=null&&${code}_weight!=0)?${code}_weight*${code}_score2:0))*100000000000000000000/100000000000000000000)`;
+						}
+					}
+				}
+
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`${sum}/${tw}`);
+			}
+			else if (modelType.formula2 == "multiply") {
+				var multiply = "";
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					if (i == 0) {
+						multiply += `((${code}_score2!=null&&${code}_score2!=0)?${code}_score2:1)`;
+					} else {
+						multiply += `*((${code}_score2!=null&&${code}_score2!=0)?${code}_score2:1)`;
+					}
+				}
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`${multiply}`);
+			}
+			else if (modelType.formula1 == "probability") {
+				var probability = `(a1!=null?a1:0)`;
+				for (var i = 0; i < results.length; i++) {
+					var code = results[i];
+					probability += `+((${code}_weight!=null?${code}_weight:0)*(${code}_score2!=null?${code}_score2:0))`;
+				}
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push('');
+				modelTypeFormula.push(`Math.round((100*Math.exp(${probability})/(1+Math.exp(${probability})))*1e2)/1e2`);
+			}
+			modelTypeFormula.push('s5');
+		}
+		return modelTypeFormula;
+	}
+
+
+	function Workbook() {
+		if (!(this instanceof Workbook)) return new Workbook();
+		this.SheetNames = [];
+		this.Sheets = {};
+	}
+
+	function s2ab(s) {
+		var buf = new ArrayBuffer(s.length);
+		var view = new Uint8Array(buf);
+		for (var i = 0; i != s.length; ++i) view[i] = s.charCodeAt(i) & 0xFF;
+		return buf;
+	}
+	function datenum(v, date1904) {
+		if (date1904) v += 1462;
+		var epoch = Date.parse(v);
+		return (epoch - new Date(Date.UTC(1899, 11, 30))) / (24 * 60 * 60 * 1000);
+	}
+
+
+	function sheet_from_array_of_arrays(data, opts) {
+		var ws = {};
+		var range = { s: { c: 10000000, r: 10000000 }, e: { c: 0, r: 0 } };
+		for (var R = 0; R != data.length; ++R) {
+			for (var C = 0; C != data[R].length; ++C) {
+				if (range.s.r > R) range.s.r = R;
+				if (range.s.c > C) range.s.c = C;
+				if (range.e.r < R) range.e.r = R;
+				if (range.e.c < C) range.e.c = C;
+				var cell = { v: data[R][C] };
+				if (cell.v == null) continue;
+				var cell_ref = XLSX.utils.encode_cell({ c: C, r: R });
+
+				if (typeof cell.v === 'number') cell.t = 'n';
+				else if (typeof cell.v === 'boolean') cell.t = 'b';
+				else if (cell.v instanceof Date) {
+					cell.t = 'n'; cell.z = XLSX.SSF._table[14];
+					cell.v = datenum(cell.v);
+				}
+				else cell.t = 's';
+
+				ws[cell_ref] = cell;
+			}
+		}
+		if (range.s.c < 10000000) ws['!ref'] = XLSX.utils.encode_range(range);
+		return ws;
+	}
+</script>
